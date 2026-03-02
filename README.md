@@ -2,7 +2,7 @@
 
 ## 1. Introduction
 
-HPO-MoRE (Human Phenotype Ontology Mixture-of-Reasoning Experts) is a hybrid phenotype grounding system that integrates contrastive embedding retrieval and large language model (LLM) definitional reasoning through a margin-based expert routing mechanism.
+HPO-MoRE (Human Phenotype Ontology Mixture-of-Reasoning Experts) is a hybrid phenotype grounding system that integrates contrastive embedding retrieval and large language model (LLM) definitional reasoning through a **margin-based expert routing** mechanism.
 
 The goal is to map free-text clinical phenotype mentions to standardized HPO identifiers with:
 
@@ -11,7 +11,7 @@ The goal is to map free-text clinical phenotype mentions to standardized HPO ide
 * Ontology hierarchy consistency
 * Computational efficiency suitable for clinical pipelines
 
-Pure embedding models achieve strong recall but struggle with sibling ambiguity. Pure LLM approaches improve semantic discrimination but are expensive and may violate ontology constraints. HPO-MoRE combines both through a principled mixture-of-experts framework.
+Pure embedding models achieve strong recall but struggle with sibling ambiguity. Pure LLM approaches improve semantic discrimination but are expensive and may violate ontology constraints. **HPO-MoRE combines both through a principled mixture-of-experts framework.**
 
 ---
 
@@ -19,17 +19,17 @@ Pure embedding models achieve strong recall but struggle with sibling ambiguity.
 
 Given:
 
-* Clinical context ( C )
-* Mention span ( m \subset C )
-* HPO ontology ( \mathcal{H} = {h_1, \dots, h_N} )
+* Clinical context: `C`
+* Mention span: `m ⊂ C`
+* HPO ontology: `H = {h1, …, hN}`
 
-The objective is:
+Objective:
 
-[
-\hat{h} = \arg\max_{h \in \mathcal{H}} P(h \mid C, m)
-]
+* Prediction:
 
-where ( \hat{h} ) is the predicted ontology concept.
+  * `h_hat = argmax_{h ∈ H} P(h | C, m)`
+
+Where `h_hat` is the predicted ontology concept.
 
 ---
 
@@ -39,57 +39,59 @@ where ( \hat{h} ) is the predicted ontology concept.
 
 A contrastively trained encoder
 
-[
-f_\theta : \text{text} \rightarrow \mathbb{R}^{d}, \quad d = 256
-]
+* Mapping:
 
-maps:
+  * `f_θ(text) -> R^d`, with `d = 256`
 
-* Mention spans ( m \rightarrow \mathbf{z}_m )
-* HPO definitions ( h \rightarrow \mathbf{z}_h )
+Encodes:
+
+* Mention span embedding:
+
+  * `m -> z_m`
+* HPO definition embedding:
+
+  * `h -> z_h`
 
 All vectors are L2-normalized:
 
-[
-|\mathbf{z}_m|_2 = |\mathbf{z}_h|_2 = 1
-]
+* `||z_m||_2 = 1`
+* `||z_h||_2 = 1`
 
-Similarity is computed via cosine similarity:
+Similarity is computed via cosine similarity (since vectors are normalized, it is a dot product):
 
-[
-s(m, h) = \mathbf{z}_m^\top \mathbf{z}_h
-]
+* `s(m, h) = z_m^T z_h`
 
 ---
 
 ### 3.2 Contrastive Objective
 
-For a positive pair ((m, h^+)) and negatives (h^-):
+For a positive pair `(m, h+)` and negative concepts `{h-}`:
 
-[
-\mathcal{L} = -\log \frac{\exp(s(m, h^+)/\tau)}
-{\exp(s(m, h^+)/\tau) + \sum_{h^-} \exp(s(m, h^-)/\tau)}
-]
+* Loss:
 
-where ( \tau ) is a temperature parameter.
+  * `L = -log( exp(s(m, h+)/τ) / ( exp(s(m, h+)/τ) + Σ_{h-} exp(s(m, h-)/τ) ) )`
+
+Where:
+
+* `τ` (tau) is the temperature parameter.
 
 ---
 
 ### 3.3 Candidate Retrieval
 
-Top-K candidates are selected:
+Top-K candidates are selected by similarity:
 
-[
-\mathcal{K}(m) = \text{TopK}_{h \in \mathcal{H}} ; s(m,h)
-]
+* Candidate set:
 
-Default: ( K = 15 ).
+  * `K(m) = TopK_{h ∈ H} s(m, h)`
+
+Default:
+
+* `K = 15`
 
 Empirically:
 
-[
-\text{Recall@15} \approx 1.0
-]
+* `Recall@15 ≈ 1.0`
 
 ---
 
@@ -97,18 +99,16 @@ Empirically:
 
 The LLM receives:
 
-* Clinical context ( C )
-* Mention span ( m )
-* Candidate set ( \mathcal{K}(m) )
-* Retrieval scores ( {s_i} ) as soft priors
+* Clinical context `C`
+* Mention span `m`
+* Candidate set `K(m)`
+* Retrieval scores `{s_i}` as soft priors
 
-It outputs:
+It outputs a constrained choice:
 
-[
-\hat{h}_{LLM} \in \mathcal{K}(m)
-]
+* `h_hat_LLM ∈ K(m)`
 
-Constrained selection ensures search space remains bounded by retrieval recall.
+This constraint keeps the search space bounded by the retrieval recall.
 
 ---
 
@@ -116,57 +116,56 @@ Constrained selection ensures search space remains bounded by retrieval recall.
 
 Let:
 
-[
-s_0 = \max_{h} s(m,h)
-]
-
-[
-s_1 = \text{second-highest similarity}
-]
-
-[
-\Delta = s_0 - s_1
-]
+* `s0 = max_h s(m, h)`
+* `s1 = second-highest similarity`
+* `Δ = s0 - s1`
 
 Routing rule:
 
-[
-\hat{h} =
-\begin{cases}
-\hat{h}*{retrieval} & \text{if } \Delta \ge \tau*{high} \
-\hat{h}*{LLM} & \text{if } \Delta \le \tau*{low} \
-\text{Hybrid decision} & \text{otherwise}
-\end{cases}
-]
+* Final selection `h_hat`:
+
+  * If `Δ >= tau_high`: use retrieval expert
+  * If `Δ <= tau_low`: use LLM expert
+  * Else: hybrid decision
+
+Written compactly:
+
+* `h_hat =`
+
+  * `h_hat_retrieval, if Δ >= tau_high`
+  * `h_hat_LLM,      if Δ <= tau_low`
+  * `Hybrid(C, m, K(m)), otherwise`
 
 Interpretation:
 
-* Large margin implies confident retrieval
-* Small margin implies ambiguity
+* Large margin ⇒ confident retrieval
+* Small margin ⇒ ambiguity among near siblings
 
-Routing approximates uncertainty estimation via similarity separation.
+Routing acts as a lightweight uncertainty proxy via similarity separation.
 
 ---
 
 ## 6. Ontology-Aware Fallback
 
-Let ( \mathcal{T}(h) ) denote the subtree rooted at ( h ).
+Let `T(h)` denote the subtree rooted at `h`.
 
 Constraints include:
 
-1. Subtree preference:
+1. **Subtree preference**
 
-[
-\hat{h}*{LLM} \in \mathcal{T}(h*{retrieval})
-]
+   * Prefer `h_hat_LLM` that stays within retrieval’s local neighborhood:
 
-2. Avoid cross-branch violations
+     * `h_hat_LLM ∈ T(h_retrieval)`
 
-3. Prefer minimal ontology distance:
+2. **Avoid cross-branch violations**
 
-[
-\arg\min_h ; \text{distance}(h, h_{retrieval})
-]
+   * If LLM picks a concept that is far across the hierarchy, down-weight or reject it.
+
+3. **Prefer minimal ontology distance**
+
+   * Among valid candidates, choose the closest to the retrieval anchor:
+
+     * `argmin_h distance(h, h_retrieval)`
 
 These rules enforce hierarchical consistency.
 
@@ -176,16 +175,7 @@ These rules enforce hierarchical consistency.
 
 The final prediction is:
 
-[
-\hat{h} = \text{OntologyFilter}
-\left(
-\text{Router}
-\left(
-\text{Retrieval}(m),
-\text{LLM}(m, \mathcal{K}(m))
-\right)
-\right)
-]
+* `h_hat = OntologyFilter( Router( Retrieval(m), LLM(C, m, K(m)) ) )`
 
 ---
 
@@ -199,8 +189,6 @@ The final prediction is:
 | GSC+        |     0.8189 |         0.8886 |
 | ID-68       |     0.8589 |         0.9637 |
 
----
-
 ### 8.2 Full-Table Evaluation
 
 | Dataset     | Dual Top-1 | Pipeline Top-1 |
@@ -208,8 +196,6 @@ The final prediction is:
 | GeneReviews |     0.5114 |         0.8580 |
 | GSC+        |     0.5192 |         0.7699 |
 | ID-68       |     0.4785 |         0.8710 |
-
----
 
 ### 8.3 Global Summary
 
@@ -224,46 +210,28 @@ The final prediction is:
 
 Expected runtime:
 
-[
-T = T_{retrieval} + \mathbb{I}(\text{LLM invoked}) \cdot T_{LLM}
-]
+* `T = T_retrieval + I(LLM_invoked) * T_LLM`
 
 Where:
 
-[
-T_{retrieval} < 5 \text{ ms}
-]
-
-[
-T_{LLM} \approx 0.5 - 1.5 \text{ s}
-]
+* `T_retrieval < 5 ms`
+* `T_LLM ≈ 0.5–1.5 s`
 
 Expected LLM usage:
 
-[
-\mathbb{E}[\text{LLM calls}] \approx 0.6 - 0.7
-]
+* `E[LLM calls] ≈ 0.6–0.7`
 
 ---
 
 ## 10. Theoretical Interpretation
 
-The system approximates:
+The system approximates a mixture model:
 
-[
-P(h \mid C,m)
-=============
+* `P(h | C, m) ≈ α(m) * P_retrieval(h | m) + (1 - α(m)) * P_reasoning(h | C, m)`
 
-\alpha(m) P_{retrieval}(h \mid m)
-+
-(1 - \alpha(m)) P_{reasoning}(h \mid C,m)
-]
+Hard routing approximates:
 
-Routing approximates:
-
-[
-\alpha(m) = \mathbf{1}(\Delta \ge \tau)
-]
+* `α(m) = 1(Δ >= τ)`
 
 Thus:
 
@@ -295,11 +263,11 @@ Thus:
 
 ## 13. Citation
 
-```
+```bibtex
 @article{hpo_more_2026,
-  title={HPO-MoRE: Mixture-of-Reasoning Experts for Ontology-Consistent Phenotype Grounding},
-  author={2026 MEDIS LAB},
-  year={2026}
+  title  = {HPO-MoRE: Mixture-of-Reasoning Experts for Ontology-Consistent Phenotype Grounding},
+  author = {2026 MEDIS LAB},
+  year   = {2026}
 }
 ```
 
@@ -307,6 +275,7 @@ Thus:
 
 ## 14. License
 
+```
 MIT License
 
 Copyright (c) 2026 MEDIS LAB
@@ -328,6 +297,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
 
 ---
 
@@ -335,5 +305,5 @@ SOFTWARE.
 
 For research collaboration, licensing, or technical inquiries:
 
-MEDIS LAB
+**MEDIS LAB**
 Email: [medis2025@outlook.com](mailto:medis2025@outlook.com)
